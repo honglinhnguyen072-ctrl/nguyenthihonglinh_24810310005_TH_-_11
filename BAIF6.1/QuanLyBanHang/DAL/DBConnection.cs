@@ -1,0 +1,41 @@
+using System.Configuration;
+using System.Text.RegularExpressions;
+using Microsoft.Data.SqlClient;
+
+namespace QuanLyBanHang.DAL
+{
+   
+    public static class DBConnection
+    {
+        public static string ConnStr =>
+            ConfigurationManager.ConnectionStrings["SalesDB"]?.ConnectionString
+            ?? @"Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=SalesDB;Integrated Security=True;TrustServerCertificate=True";
+
+        public static SqlConnection GetConnection() => new SqlConnection(ConnStr);
+
+    
+        public static void KhoiTaoCSDL()
+        {
+            var builder = new SqlConnectionStringBuilder(ConnStr);
+            string dbName = builder.InitialCatalog;
+            builder.InitialCatalog = "master";
+
+            using var conn = new SqlConnection(builder.ConnectionString);
+            conn.Open();
+            using (var check = new SqlCommand("SELECT DB_ID(@db)", conn))
+            {
+                check.Parameters.AddWithValue("@db", dbName);
+                if (check.ExecuteScalar() != DBNull.Value) return;
+            }
+
+            string path = Path.Combine(AppContext.BaseDirectory, "ScriptDB.sql");
+            string script = File.ReadAllText(path);
+            foreach (string batch in Regex.Split(script, @"^\s*GO\s*$", RegexOptions.Multiline | RegexOptions.IgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(batch)) continue;
+                using var cmd = new SqlCommand(batch, conn);
+                cmd.ExecuteNonQuery();
+            }
+        }
+    }
+}
